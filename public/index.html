@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Oyunum</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #bilgi {
+      position: fixed; top: 10px; left: 10px;
+      color: white; font-family: sans-serif;
+      background: rgba(0,0,0,0.5); padding: 6px 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="bilgi">WASD ile yürü</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const socket = io();
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(20, 40, 10);
+    scene.add(sun);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshLambertMaterial({ color: 0x4caf50 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    const meshes = {};
+
+    socket.on('state', (players) => {
+      for (const id in players) {
+        if (!meshes[id]) {
+          const m = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 2, 1),
+            new THREE.MeshLambertMaterial({ color: players[id].color })
+          );
+          scene.add(m);
+          meshes[id] = m;
+        }
+        meshes[id].position.set(players[id].x, 1, players[id].z);
+      }
+      for (const id in meshes) {
+        if (!players[id]) {
+          scene.remove(meshes[id]);
+          delete meshes[id];
+        }
+      }
+      document.getElementById('bilgi').textContent =
+        'WASD ile yürü | Oyuncu sayısı: ' + Object.keys(players).length;
+    });
+
+    const keys = {};
+    function gonder() {
+      const x = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+      const z = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0);
+      socket.emit('input', { x, z });
+    }
+    addEventListener('keydown', (e) => {
+      if (keys[e.code]) return;
+      keys[e.code] = true;
+      gonder();
+    });
+    addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+      gonder();
+    });
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const me = meshes[socket.id];
+      if (me) {
+        camera.position.set(me.position.x, 12, me.position.z + 14);
+        camera.lookAt(me.position);
+      } else {
+        camera.position.set(0, 12, 14);
+        camera.lookAt(0, 0, 0);
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
